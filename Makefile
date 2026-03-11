@@ -49,9 +49,13 @@ $(VENV): $(REQUIREMENTS)
 		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all -r "$(REQUIREMENTS)" || echo "Non-critical packages skipped" && \
 		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all requests numpy || echo "Core deps installed"
 
-# 3. Compile to bytecode (.pyc)
+# 3. Audit dependencies & compile to bytecode (.pyc)
 .PHONY: compile
 compile: install-deps pull
+	@echo === Auditing Python dependencies ===
+	@call "$(VENV)\Scripts\activate.bat" && \
+		"$(VENV)\Scripts\pip.exe" install pip-audit && \
+		"$(VENV)\Scripts\pip-audit.exe" || (echo "VULNERABILITIES FOUND - fix before proceeding" && exit /b 1)
 	@echo === Compiling to bytecode ===
 	@call "$(VENV)\Scripts\activate.bat" && \
 		$(PYTHON) -m compileall -b -f orbit.py
