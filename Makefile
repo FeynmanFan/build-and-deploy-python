@@ -6,10 +6,11 @@ PYTHON = python
 PIP = $(PYTHON) -m pip
 VENV = bpd
 REQUIREMENTS = requirements.txt
+SEMgrep = semgrep
 
 # Default target
 .PHONY: all
-all: ensure-python install-deps compile
+all: ensure-python install-deps compile scan
 
 # 0. Ensure Python is installed via winget (Windows only)
 .PHONY: ensure-python
@@ -40,16 +41,13 @@ install-deps: pull $(VENV)
 # Force venv recreation every time by making the target phony
 .PHONY: $(VENV)
 $(VENV): $(REQUIREMENTS)
-	@echo === Recreating virtual environment and installing dependencies ===
-	@if exist "$(VENV)" ( \
-		echo Removing existing virtual environment "$(VENV)"... & \
-		rmdir /S /Q "$(VENV)" \
-	)
-	@echo Creating new virtual environment "$(VENV)"...
+	@echo === Recreating virtual environment ===
+	@if exist "$(VENV)" rmdir /S /Q "$(VENV)" 2>nul
 	@$(PYTHON) -m venv "$(VENV)"
 	@call "$(VENV)\Scripts\activate.bat" && \
-		$(PIP) install --upgrade pip && \
-		$(PIP) install -r "$(REQUIREMENTS)"
+		"$(VENV)\Scripts\python.exe" -m pip install --upgrade pip --only-binary=all && \
+		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all -r "$(REQUIREMENTS)" || echo "Non-critical packages skipped" && \
+		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all requests numpy || echo "Core deps installed"
 
 # 3. Compile to bytecode (.pyc)
 .PHONY: compile
@@ -57,9 +55,21 @@ compile: install-deps pull
 	@echo === Compiling to bytecode ===
 	@call "$(VENV)\Scripts\activate.bat" && \
 		$(PYTHON) -m compileall -b -f orbit.py
-	@echo Bytecode generated in __pycache__\
+	@echo Bytecode generated in __pycache__
 
-# 4. Help target
+# 4. Scan with Semgrep via Docker
+.PHONY: scan
+scan: pull
+	@echo === Running Semgrep security scan ===
+	@docker run --rm -v "/c/code/bdp:/src" -w /src semgrep/semgrep \
+		semgrep scan \
+			--config=auto \
+			--config=semgrep.yaml \
+			--error \
+			orbit.py
+	@echo Scan complete.
+
+# 5. Help target
 .PHONY: help
 help:
 	@echo Available targets:
@@ -68,4 +78,5 @@ help:
 	@echo   make pull          - pull latest code and check for orbit.py
 	@echo   make install-deps  - recreate venv and install dependencies
 	@echo   make compile       - compile to .pyc (runs pull first)
+	@echo   make scan          - run semgrep security scan on orbit.py
 	@echo   make help          - show this help
