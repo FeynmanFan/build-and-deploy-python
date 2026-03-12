@@ -53,12 +53,13 @@ $(VENV): $(REQUIREMENTS)
 .PHONY: compile
 compile: install-deps pull
 	@echo === Auditing Python dependencies ===
-	@call "$(VENV)\Scripts\activate.bat" && \
-		"$(VENV)\Scripts\pip.exe" install pip-audit && \
-		"$(VENV)\Scripts\pip-audit.exe" || (echo "VULNERABILITIES FOUND - fix before proceeding" && exit /b 1)
-	@echo === Compiling to bytecode ===
-	@call "$(VENV)\Scripts\activate.bat" && \
-		$(PYTHON) -m compileall -b -f orbit.py
+	@call "$(VENV)\Scripts\activate.bat" && "$(VENV)\Scripts\pip.exe" install pip-audit
+	@call "$(VENV)\Scripts\activate.bat" && "$(VENV)\Scripts\pip-audit.exe"
+	@if ERRORLEVEL 1 (echo VULNERABILITIES FOUND - fix before proceeding & exit /b 1)
+
+	@echo === Compiling to bytecode (SECURE) ===
+	@$(VENV)\Scripts\python.exe -c "import sys; sys.path = [p for p in sys.path if p.startswith(('/', 'C:\\', '/venv', '$(VENV)')) or p == '']; import py_compile; py_compile.compile('orbit.py', optimize=2)"
+
 	@echo Bytecode generated in __pycache__
 
 # 4. Scan with Semgrep via Docker

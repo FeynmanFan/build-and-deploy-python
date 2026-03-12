@@ -1,11 +1,10 @@
 # orbital_processor.py
 import requests
 import numpy as np
-import pickle
 import os
 
 # === HARDCODED SECRET (Semgrep will catch this) ===
-SATELLITE_API_KEY = "sk_live_orbital_decay_predictor_2026_8f3k9x2m7p"
+SATELLITE_API_CRED = os.environ.get("SATELLITE_API_CRED")
 
 class OrbitalDecayPredictor:
     """
@@ -17,12 +16,8 @@ class OrbitalDecayPredictor:
         self.decay_model = self._load_or_create_model()
 
     def _load_or_create_model(self):
-        """Load or create the proprietary decay model (pickle used here)."""
-        model_path = "orbital_decay_model.pkl"
-        if os.path.exists(model_path):
-            with open(model_path, "rb") as f:
-                return pickle.load(f)
-        
+        """Load or create the proprietary decay model some other way"""
+               
         # Proprietary model coefficients (this is the sensitive IP)
         model = {
             'base_decay_rate': np.array([0.00012, 0.00008, 0.00015]),
@@ -30,10 +25,7 @@ class OrbitalDecayPredictor:
             'atmospheric_drag_coefficient': 2.45,
             'version': "proprietary_v2.3_2026"
         }
-        
-        with open(model_path, "wb") as f:
-            pickle.dump(model, f)
-        
+               
         return model
 
     def predict_decay(self, altitude_km: float, velocity_kms: float) -> float:
@@ -47,7 +39,7 @@ class OrbitalDecayPredictor:
         try:
             response = requests.get(
                 "https://api.fictionalorbital.com/telemetry",
-                headers={"Authorization": f"Bearer {SATELLITE_API_KEY}"},
+                headers={"Authorization": f"Bearer {SATELLITE_API_CRED}"},
                 timeout=5
             )
             live_factor = response.json().get("solar_activity", 1.0)
