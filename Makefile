@@ -1,16 +1,18 @@
 # Makefile for orbital_processor project
 # Windows / cmd.exe compatible
+# Now includes: production mode (disable debug), PyArmor obfuscation
 
 PROJECT_NAME = orbital_processor
 PYTHON = python
 PIP = $(PYTHON) -m pip
+SEMgrep = semgrep
+PYARMOR = pyarmor
 VENV = bpd
 REQUIREMENTS = requirements.txt
-SEMgrep = semgrep
 
 # Default target
 .PHONY: all
-all: ensure-python install-deps compile scan
+all: ensure-python pull scan install-deps compile obfuscate
 
 # 0. Ensure Python is installed via winget (Windows only)
 .PHONY: ensure-python
@@ -24,7 +26,22 @@ ensure-python:
 	)
 	@echo Python is installed or already present.
 
-# 1. Pull/check code (ensure file exists)
+# 1. Create virtual environment and install dependencies
+.PHONY: install-deps
+install-deps: ensure-python $(VENV)
+
+$(VENV): $(REQUIREMENTS)
+	@echo === Recreating virtual environment ===
+	@if exist "$(VENV)" rmdir /S /Q "$(VENV)" 2>nul
+	@$(PYTHON) -m venv "$(VENV)"
+	@call "$(VENV)\Scripts\activate.bat" && \
+		"$(VENV)\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel --only-binary=all && \
+		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all -r "$(REQUIREMENTS)" || echo "Non-critical packages skipped"
+	
+	@call "$(VENV)\Scripts\activate.bat" && \
+		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all pyarmor
+		
+# 2. Pull/check code (ensure file exists)
 .PHONY: pull
 pull: ensure-python
 	@echo Pulling from repo...
@@ -33,21 +50,6 @@ pull: ensure-python
 		echo Error: orbit.py not found! & \
 		exit 1 \
 	)
-
-# 2. Recreate virtual environment and install dependencies
-.PHONY: install-deps
-install-deps: pull $(VENV)
-
-# Force venv recreation every time by making the target phony
-.PHONY: $(VENV)
-$(VENV): $(REQUIREMENTS)
-	@echo === Recreating virtual environment ===
-	@if exist "$(VENV)" rmdir /S /Q "$(VENV)" 2>nul
-	@$(PYTHON) -m venv "$(VENV)"
-	@call "$(VENV)\Scripts\activate.bat" && \
-		"$(VENV)\Scripts\python.exe" -m pip install --upgrade pip --only-binary=all && \
-		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all -r "$(REQUIREMENTS)" || echo "Non-critical packages skipped" && \
-		"$(VENV)\Scripts\python.exe" -m pip install --only-binary=all requests numpy || echo "Core deps installed"
 
 # 3. Audit dependencies & compile to bytecode (.pyc)
 .PHONY: compile
@@ -62,7 +64,16 @@ compile: install-deps pull
 
 	@echo Bytecode generated in __pycache__
 
-# 4. Scan with Semgrep via Docker
+# 4. Obfuscate code using PyArmor
+.PHONY: obfuscate
+obfuscate: install-deps pull
+	@echo === Obfuscating code with PyArmor ===
+	@if not exist dist_obf (mkdir dist_obf)
+	@"$(VENV)\Scripts\pyarmor.exe" gen --output dist_obf --restrict orbit.py
+	@echo Obfuscated code generated in dist_obf/
+	@echo Run the obfuscated version with: python dist_obf/orbit.py
+
+# 5. Scan with Semgrep via Docker
 .PHONY: scan
 scan: pull
 	@echo === Running Semgrep security scan ===
@@ -74,14 +85,14 @@ scan: pull
 			orbit.py
 	@echo Scan complete.
 
-# 5. Help target
+# 6. Help target
 .PHONY: help
 help:
 	@echo Available targets:
-	@echo   make all           - ensure Python + recreate venv + install deps + compile
+	@echo   make all           - ensure Python + recreate venv + install deps + compile + obfuscate + scan
 	@echo   make ensure-python - check/install Python via winget (Windows)
-	@echo   make pull          - pull latest code and check for orbit.py
 	@echo   make install-deps  - recreate venv and install dependencies
 	@echo   make compile       - compile to .pyc (runs pull first)
+	@echo   make obfuscate     - obfuscate code with PyArmor
 	@echo   make scan          - run semgrep security scan on orbit.py
 	@echo   make help          - show this help
